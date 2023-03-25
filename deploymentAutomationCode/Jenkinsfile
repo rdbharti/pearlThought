@@ -1,0 +1,67 @@
+properties([pipelineTriggers([githubPush()])])
+
+def dockerImage
+
+pipeline {
+    
+    environment {
+    registry = "ranadurlabh/ranadurlabh"
+    registryCredential = 'dockerhub'
+    }
+    
+    /* specify nodes for executing */
+    agent any
+    stages {
+        /* checkout repo */
+        stage('Checkout SCM') {
+            steps {
+                checkout([
+                 $class: 'GitSCM',
+                 branches: [[name: 'master']],
+                 userRemoteConfigs: [[
+                    url: 'https://github.com/rdbharti/express.git',
+                    credentialsId: '',
+                 ]]
+                ])
+            }
+        }
+        
+        stage('clean previous image and container'){
+            steps {
+                script{
+                    sh 'docker rm -f $(docker ps -aq) || true'
+                    sh "docker image prune -af || true"
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                dir('examples/hello-world/'){
+                    script{
+                        dockerImage = docker.build("$registry:$BUILD_NUMBER")
+                    }
+                }
+            }
+                
+        }
+        
+        stage('Container Create'){
+            steps{
+                script{
+                    sh "docker run -d --name app -p 80:3000 $registry:$BUILD_NUMBER"
+                }
+            }
+        }
+        
+        stage('Deploy Image') {
+            steps {
+                script {
+                    docker.withRegistry( '', registryCredential ) {
+                        dockerImage.push()
+                    }
+                }           
+            }
+        }
+    }
+}
